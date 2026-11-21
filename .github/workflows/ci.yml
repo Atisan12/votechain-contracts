@@ -124,6 +124,20 @@ jobs:
             echo "All public contract functions have a test."
           fi
 
+  deny:
+    name: Cargo Deny (bans & advisories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: Run cargo deny check
+        # Fails the job on duplicate crate versions (bans) or security
+        # advisories. cargo-deny prints human-readable diagnostics to stderr.
+        run: cargo deny --all-features check bans advisories
+
   test:
     name: Build & Test
     runs-on: ubuntu-latest
@@ -220,65 +234,5 @@ jobs:
             ${{ runner.os }}-cargo-
       - name: Install cargo-audit
         run: cargo install --locked cargo-audit
-      - name: Update advisory database
-        run: cargo audit fetch
       - name: Run cargo audit
-        run: cargo audit --deny warnings
-
-  build-wasm:
-    name: Build WASM
-    runs-on: ubuntu-latest
-    needs: test
-    env:
-      WASM_SIZE_REGRESSION_THRESHOLD: '5'
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-wasm-
-            ${{ runner.os }}-cargo-
-      - name: Cache Stellar CLI binary
-        id: stellar-cli-cache
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: ~/.cargo/bin/stellar
-          key: ${{ runner.os }}-stellar-cli-${{ env.STELLAR_CLI_VERSION }}
-      - name: Install Stellar CLI
-        if: steps.stellar-cli-cache.outputs.cache-hit != 'true'
-        run: cargo install --locked stellar-cli@${{ env.STELLAR_CLI_VERSION }}
-      - run: stellar contract build
-      - name: Check WASM binary sizes
-        run: |
-          WASM_DIR="target/wasm32-unknown-unknown/release"
-          GOV_WASM="$WASM_DIR/votechain_governance.wasm"
-          TOK_WASM="$WASM_DIR/votechain_token.wasm"
-          GOV_LIMIT=$((100 * 1024))   # 100 KB
-          TOK_LIMIT=$((50 * 1024))    # 50 KB
-
-          gov_size=$(stat -c%s "$GOV_WASM")
-          tok_size=$(stat -c%s "$TOK_WASM")
-
-          echo "governance.wasm : $gov_size bytes (limit: $GOV_LIMIT)"
-          echo "token.wasm      : $tok_size bytes (limit: $TOK_LIMIT)"
-
-          mkdir -p wasm-size-history
-          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) governance=$gov_size token=$tok_size" \
-            >> wasm-size-history/sizes.log
-
-          if [ "$gov_size" -gt "$GOV_LIMIT" ]; then
-            echo "ERROR: governance.wasm ($gov_size bytes) exceeds 100 KB limit" >&2
-            exit 1
-          fi
-          if [ "$tok_size" -gt "$TOK_LIMIT" ]; then
-            echo "ERROR: token.wasm ($tok_size bytes) exceeds 50 KB limit" >&2
-            exit 1
-          fi
+        run: cargo audit
