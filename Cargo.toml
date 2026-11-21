@@ -30,3 +30,11 @@ lto = true
 [profile.release-with-logs]
 inherits = "release"
 debug-assertions = true
+
+[profile.kani]
+inherits = "dev"
+# Kani proofs (see contracts/governance/src/kani_proofs.rs) run under this
+# profile. Keep debug assertions on so overflow checks stay active and the
+# bounded harnesses finish well within CI timeouts.
+debug-assertions = true
+overflow-checks = true
